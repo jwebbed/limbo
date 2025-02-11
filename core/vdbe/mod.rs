@@ -2691,6 +2691,28 @@ impl Program {
                     state.registers[*dest] = OwnedValue::Integer(cookie_value);
                     state.pc += 1;
                 }
+                Insn::SetCookie { db, cookie, value } => {
+                    if *db > 0 {
+                        // TODO: implement temp databases
+                        todo!("temp databases not implemented yet");
+                    }
+
+                    // SetCookie can only be called from within a write transaction
+                    assert!(
+                        self.connection
+                            .upgrade()
+                            .expect("only weak ref to connection?")
+                            .transaction_state
+                            .borrow()
+                            .clone()
+                            == TransactionState::Write
+                    );
+                    pager.update_header(|header| match cookie {
+                        Cookie::UserVersion => header.user_version = *value,
+                        cookie => todo!("{cookie:?} is not yet implemented for SetCookie"),
+                    })?;
+                    state.pc += 1;
+                }
                 Insn::ShiftRight { lhs, rhs, dest } => {
                     state.registers[*dest] =
                         exec_shift_right(&state.registers[*lhs], &state.registers[*rhs]);

@@ -121,18 +121,7 @@ fn update_pragma(
 ) -> crate::Result<()> {
     match pragma {
         PragmaName::CacheSize => {
-            let cache_size = match value {
-                ast::Expr::Literal(ast::Literal::Numeric(numeric_value)) => {
-                    numeric_value.parse::<i64>()?
-                }
-                ast::Expr::Unary(ast::UnaryOperator::Negative, expr) => match *expr {
-                    ast::Expr::Literal(ast::Literal::Numeric(numeric_value)) => {
-                        -numeric_value.parse::<i64>()?
-                    }
-                    _ => bail_parse_error!("Not a valid value"),
-                },
-                _ => bail_parse_error!("Not a valid value"),
-            };
+            let cache_size = extract_numeric_value(value)?;
             update_cache_size(cache_size, header, pager);
             Ok(())
         }
@@ -149,8 +138,13 @@ fn update_pragma(
             Ok(())
         }
         PragmaName::UserVersion => {
-            // TODO: Implement updating user_version
-            todo!("updating user_version not yet implemented")
+            program.emit_transaction(true);
+            program.emit_insn(Insn::SetCookie {
+                db: 0,
+                cookie: Cookie::UserVersion,
+                value: extract_numeric_value(value)?,
+            });
+            Ok(())
         }
         PragmaName::TableInfo => {
             // because we need control over the write parameter for the transaction,
@@ -257,6 +251,24 @@ fn query_pragma(
     }
 
     Ok(())
+}
+
+fn extract_numeric_value<N: FromStr + std::ops::Neg<Output = N>>(
+    value: ast::Expr,
+) -> crate::Result<N>
+where
+    crate::LimboError: From<<N as FromStr>::Err>,
+{
+    match value {
+        ast::Expr::Literal(ast::Literal::Numeric(numeric_value)) => Ok(numeric_value.parse::<N>()?),
+        ast::Expr::Unary(ast::UnaryOperator::Negative, expr) => match *expr {
+            ast::Expr::Literal(ast::Literal::Numeric(numeric_value)) => {
+                Ok(-numeric_value.parse::<N>()?)
+            }
+            _ => bail_parse_error!("Not a valid value"),
+        },
+        _ => bail_parse_error!("Not a valid value"),
+    }
 }
 
 fn update_cache_size(value: i64, header: Rc<RefCell<DatabaseHeader>>, pager: Rc<Pager>) {

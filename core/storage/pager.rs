@@ -529,28 +529,12 @@ impl Pager {
     */
     #[allow(clippy::readonly_write_lock)]
     pub fn allocate_page(&self) -> Result<PageRef> {
-        let header = &self.db_header;
-        let mut header = RefCell::borrow_mut(header);
-        header.database_size += 1;
-        {
-            // update database size
-            // read sync for now
-            loop {
-                let first_page_ref = self.read_page(1)?;
-                if first_page_ref.is_locked() {
-                    self.io.run_once()?;
-                    continue;
-                }
-                first_page_ref.set_dirty();
-                self.add_dirty(1);
-
-                let contents = first_page_ref.get().contents.as_ref().unwrap();
-                contents.write_database_header(&header);
-                break;
-            }
-        }
-
-        let page = allocate_page(header.database_size as usize, &self.buffer_pool, 0);
+        self.update_header(|header| header.database_size += 1)?;
+        let page = allocate_page(
+            self.db_header.borrow().database_size as usize,
+            &self.buffer_pool,
+            0,
+        );
         {
             // setup page and add to cache
             page.set_dirty();
@@ -561,6 +545,29 @@ impl Pager {
             cache.insert(page_key, page.clone());
         }
         Ok(page)
+    }
+
+    pub fn update_header<F>(&self, updater: F) -> Result<()>
+    where
+        F: FnOnce(&mut DatabaseHeader) -> (),
+    {
+        let header = &self.db_header;
+        let mut header = RefCell::borrow_mut(header);
+        updater(&mut header);
+        loop {
+            let first_page_ref = self.read_page(1)?;
+            if first_page_ref.is_locked() {
+                self.io.run_once()?;
+                continue;
+            }
+            first_page_ref.set_dirty();
+            self.add_dirty(1);
+
+            let contents = first_page_ref.get().contents.as_ref().unwrap();
+            contents.write_database_header(&header);
+            break;
+        }
+        Ok(())
     }
 
     pub fn put_loaded_page(&self, id: usize, page: PageRef) {

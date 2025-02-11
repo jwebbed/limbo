@@ -1238,6 +1238,7 @@ pub fn insn_to_str(
                 0,
                 "".to_string(),
             ),
+            Insn::SetCookie { db, cookie, value } => todo!(),
         };
     format!(
         "{:<4}  {:<17}  {:<4}  {:<4}  {:<4}  {:<13}  {:<2}  {}",

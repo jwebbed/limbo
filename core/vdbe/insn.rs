@@ -645,6 +645,12 @@ pub enum Insn {
         dest: usize,
         cookie: Cookie,
     },
+    /// Write the integer value P3 into cookie number P2 of database P1.
+    SetCookie {
+        db: usize,
+        cookie: Cookie,
+        value: i32,
+    },
 }
 
 // TODO: Add remaining cookies.
